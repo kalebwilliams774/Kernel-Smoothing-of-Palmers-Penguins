@@ -1,0 +1,95 @@
+---
+title: "Kernel Smoothing of Palmers Penguins"
+author: "Kaleb Williams"
+date: "2024-03-22"
+output: html_document
+---
+
+```{r,warning=FALSE}
+#Importing palmer penguins
+
+library(palmerpenguins)
+
+head(penguins)
+```
+We want to create a kernel smoother using all continuous variables therefore we will need bill length/depth, flipper length, body mass
+```{r,warning=FALSE}
+
+library(tidyverse) 
+# Subset data to include only male penguins
+male_penguins <- penguins|>
+  filter(sex=='male')
+
+# Create binary response variable: isGentoo
+isGentoo <- ifelse(male_penguins$species == "Gentoo", 1, 0)
+```
+
+```{r}
+# Define function to calculate Manhattan distance
+manhattan_distance <- function(x, y) {
+  sum(abs(x - y))
+}
+
+# Define function to calculate Euclidean distance
+euclidean_distance <- function(x, y) {
+  sqrt(sum((x - y)^2))
+}
+```
+
+```{r}
+# Define function for kernel smoother
+kernel_smoother <- function(data, scaling_method, distance_metric) {
+  # Apply scaling method
+  if (scaling_method == "z-score") {
+    scaled_data <- scale(data)
+  } else if (scaling_method == "quantile") {
+    scaled_data <- apply(data, 2, rank) / (length(data[,1]) + 1)
+  }
+  
+  # Calculate distances
+  if (distance_metric == "Manhattan") {
+    dist_func <- manhattan_distance
+  } else if (distance_metric == "Euclidean") {
+    dist_func <- euclidean_distance
+  }
+  
+  # Calculate kernel weights
+  weights <- apply(scaled_data, 1, function(x) {
+    distances <- apply(scaled_data, 1, function(y) dist_func(x, y))
+    kernel_values <- dnorm(distances, mean = 0, sd = 1)
+    weighted_values <- kernel_values / sum(kernel_values)
+    weighted_values
+  })
+  
+  # Predict isGentoo based on weighted sum of neighboring points
+  predictions <- apply(weights, 2, function(w) sum(w * isGentoo))
+  
+  # Return predictions
+  predictions
+}
+```
+
+```{r}
+scaling_methods <- c("z-score", "quantile")
+distance_metrics <- c("Manhattan", "Euclidean")
+
+results <- matrix(NA, nrow = length(scaling_methods), ncol = length(distance_metrics))
+rownames(results) <- scaling_methods
+colnames(results) <- distance_metrics
+
+for (i in seq_along(scaling_methods)) {
+  for (j in seq_along(distance_metrics)) {
+    scaling_method <- scaling_methods[i]
+    distance_metric <- distance_metrics[j]
+    predictions <- kernel_smoother(male_penguins[, -c(1, 2,7,8)], scaling_method, distance_metric)
+    training_error <- sqrt(mean(abs(predictions - isGentoo)^2))
+    results[i, j] <- training_error
+  }
+}
+
+# Print results
+print(results)
+```
+
+
+
